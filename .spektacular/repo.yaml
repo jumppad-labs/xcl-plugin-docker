@@ -1,13 +1,14 @@
 schema: 2
 written_by: dev
-description: GitHub template repository for new xcl plugins, built to the standard plugin layout, with CI and signed GoReleaser releases.
-role: plugin template
+description: An xcl plugin for Docker, created from the xcl-plugin-template GitHub template and maintained as the example remote plugin, published as signed GitHub releases and installed through xcl's GitHub releases registry.
+role: example remote plugin
 tags:
     - go
     - xcl
     - plugin
-    - template
-    - goreleaser
+    - docker
+    - example
+    - github-releases
 source:
     provider: file
     config:
