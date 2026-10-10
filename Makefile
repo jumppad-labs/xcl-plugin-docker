@@ -5,7 +5,7 @@
 # asset. It must match the name of your repository, because the GitHub
 # registry installs a plugin by its repository name. Change it when you make
 # the template your own.
-PLUGIN := xcl-plugin-template
+PLUGIN := xcl-plugin-docker
 
 BUILD_DIR := build
 DIST_DIR := dist
