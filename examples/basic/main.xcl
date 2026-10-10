@@ -1,0 +1,11 @@
+# The directory the note is written to. The end-to-end tests set it to a
+# temporary directory.
+variable "directory" {
+  default = "./out"
+}
+
+notes "note" "greeting" {
+  directory = variable.directory
+  name      = "greeting.txt"
+  content   = "Hello from xcl"
+}

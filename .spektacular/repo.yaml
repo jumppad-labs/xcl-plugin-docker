@@ -1,0 +1,22 @@
+schema: 2
+written_by: dev
+description: GitHub template repository for new xcl plugins, built to the standard plugin layout, with CI and signed GoReleaser releases.
+role: plugin template
+tags:
+    - go
+    - xcl
+    - plugin
+    - template
+    - goreleaser
+source:
+    provider: file
+    config:
+        location: ..
+knowledge:
+    provider: file
+    config:
+        location: knowledge
+changelog:
+    provider: file
+    config:
+        directory: changelog

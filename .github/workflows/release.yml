@@ -1,0 +1,60 @@
+# Publishes a signed release when a version tag is pushed, for example by
+# `make release VERSION=v0.1.0`. The release holds an archive per platform,
+# the checksums file and an armoured detached signature over it, named as the
+# GitHub registry installs them.
+#
+# It needs two repository secrets: GPG_PRIVATE_KEY, the armoured private
+# signing key, and GPG_PASSPHRASE, its passphrase. Without the key it fails
+# before building, so an unsigned release is never published.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          if [ -z "$GPG_PRIVATE_KEY" ]; then
+            echo "GPG_PRIVATE_KEY secret is not set, refusing to publish an unsigned release" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: make test
+
+      - name: Build the release archives
+        run: make dist VERSION="$GITHUB_REF_NAME"
+
+      - name: Import the signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+
+      - name: Sign the checksums
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          checksums="$(ls dist/*_checksums.txt)"
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
+            --armor --detach-sign --output "$checksums.sig" "$checksums"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --verify-tag dist/*

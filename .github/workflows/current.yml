@@ -1,0 +1,34 @@
+# Runs the suite against the latest xcl release once a week, so a release
+# that breaks the template shows up without anyone looking for it.
+#
+# When this fails, the latest xcl release breaks the template: update the
+# template to it.
+name: Latest xcl
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  latest-xcl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Use the latest xcl release
+        run: |
+          go get github.com/jumppad-labs/xcl@latest
+          go mod tidy
+          go list -m github.com/jumppad-labs/xcl
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: make test

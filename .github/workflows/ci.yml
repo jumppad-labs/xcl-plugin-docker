@@ -1,0 +1,51 @@
+# Checks every change: builds, runs the static checks and runs the whole test
+# suite, unit and end-to-end. Nothing else needs to be running, so a failure
+# here is a failure in the change.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: make build
+
+      # staticcheck needs a newer Go than the go.mod minimum; auto lets
+      # go run fetch the toolchain it asks for
+      - name: Static checks
+        env:
+          GOTOOLCHAIN: auto
+        run: make lint
+
+      - name: Test
+        run: make test
+
+  # Builds the release archives for every platform with a snapshot version,
+  # so a change that breaks release packaging fails here rather than on
+  # release day. Nothing is signed or published.
+  dist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build the release archives
+        run: make dist VERSION=v0.0.0-snapshot
+
+      - name: List the release archives
+        run: ls -l dist/
