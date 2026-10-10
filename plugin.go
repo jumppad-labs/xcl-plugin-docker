@@ -1,48 +1,70 @@
-// Package notes is the notes plugin, which provides the block type
-// notes "note" and writes each note to a file.
+// Package docker is the Docker plugin, which provides the block types
+// docker "network" and docker "container" and creates them as real Docker
+// networks and containers.
 //
-// Plugin is importable: an application registers it in-process with
-// registry.Local.RegisterPlugin(&notes.Plugin{}), and cmd/notes serves the
+// Plugin is importable: a host registers it in-process with
+// registry.Local.RegisterPlugin(&docker.Plugin{}), and cmd/docker serves the
 // same type as a separate program. The block types live in entities, the
-// providers in providers and the backend layer in client.
-//
-// To make the template your own, rename this package and cmd/notes after
-// your plugin, and change the block type registered in Init.
-package notes
+// providers in providers and the Docker client layer in client. A program
+// that only reads the blocks it applied imports entities alone.
+package docker
 
 import (
+	"github.com/jumppad-labs/xcl-plugin-docker/client/containers"
+	dockerclient "github.com/jumppad-labs/xcl-plugin-docker/client/docker"
+	"github.com/jumppad-labs/xcl-plugin-docker/entities"
+	"github.com/jumppad-labs/xcl-plugin-docker/providers"
 	"github.com/jumppad-labs/xcl/logger"
 	"github.com/jumppad-labs/xcl/plugins"
-
-	"github.com/jumppad-labs/xcl-plugin-template/client/files"
-	"github.com/jumppad-labs/xcl-plugin-template/entities"
-	"github.com/jumppad-labs/xcl-plugin-template/providers"
 )
 
-// Plugin provides the block type notes "note". cmd/notes serves it as a
-// separate plugin program.
+// Plugin provides the block types docker "network" and docker "container".
+// cmd/docker serves it as an external plugin.
 type Plugin struct {
 	plugins.PluginBase
 }
 
 var _ plugins.Plugin = (*Plugin)(nil)
 
-// Init builds the files client once, without touching the disk, and registers
-// the notes "note" block type with a provider built around it. A plugin with
-// several types builds each client once here and shares it between the
-// providers that use it.
+// Init builds the Docker client from the environment, and the container task
+// layer over it once, then registers both block types, each with a provider
+// sharing that task layer. Building them does not contact Docker, the
+// providers do when they are called.
+//
+// logger is plugin scoped, for messages written outside a provider call like
+// this one. xcl adds provider=<block subtype> to what each provider's Init
+// logs. During a call the providers log through plugins.Logger(ctx) instead,
+// which xcl binds to the resource and step being worked on.
 func (p *Plugin) Init(logger logger.Logger, state plugins.State) error {
-	filesClient := files.NewLocal()
+	client, err := dockerclient.New()
+	if err != nil {
+		return err
+	}
 
-	logger.Debug("registering block types", "block_types", "notes.note")
+	tasks := containers.New(client)
+
+	logger.Debug("registering block types", "block_types", "docker.network, docker.container")
+
+	err = plugins.RegisterResourceProvider(
+		&p.PluginBase,
+		logger,
+		state,
+		"docker",
+		"network",
+		&entities.Network{},
+		providers.NewNetworkProvider(tasks),
+	)
+	if err != nil {
+		return err
+	}
 
 	return plugins.RegisterResourceProvider(
 		&p.PluginBase,
 		logger,
 		state,
-		"notes",
-		"note",
-		&entities.Note{},
-		providers.NewNoteProvider(filesClient),
+		"docker",
+		"container",
+		&entities.Container{},
+		providers.NewContainerProvider(tasks),
 	)
 }

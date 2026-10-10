@@ -1,5 +1,5 @@
-# Builds, tests and regenerates the doubles of the plugin. Run every target
-# from the repository root.
+# Builds, tests, regenerates the doubles of and releases the Docker plugin.
+# Run every target from the repository root.
 
 # PLUGIN is the plugin's name: the name of its binary and of every release
 # asset. It must match the name of your repository, because the GitHub
@@ -30,14 +30,15 @@ MOCKERY := go run github.com/vektra/mockery/v3@v3.8.0
 # fetches when GOTOOLCHAIN is auto, the default
 STATICCHECK := go run honnef.co/go/tools/cmd/staticcheck@v0.8.1
 
-.PHONY: build test lint generate inprocess external dist release check-version clean
+.PHONY: build test lint generate e2e dist release check-version clean
 
 # Build every package, and the plugin program as build/$(PLUGIN)
 build:
 	go build ./...
-	go build -o $(BUILD_DIR)/$(PLUGIN) ./cmd/notes
+	go build -o $(BUILD_DIR)/$(PLUGIN) ./cmd/docker
 
-# Run the unit and end-to-end tests. Nothing else needs to be running.
+# Run the unit and end-to-end tests. The tests that need a Docker engine skip
+# when none is reachable.
 test:
 	go test -race ./...
 
@@ -51,15 +52,11 @@ lint:
 generate:
 	$(MOCKERY)
 
-# Apply the sample, plan it again with no changes and destroy it, with the
-# plugin registered in-process: imported and run inside the application
-inprocess:
-	go test -v -count=1 -run TestInProcess ./e2e
-
-# Apply the sample, plan it again with no changes and destroy it, with the
-# plugin built and run as a separate plugin program
-external:
-	go test -v -count=1 -run TestExternal ./e2e
+# Apply the sample, plan it again with no changes and destroy it against a
+# real Docker engine, with the plugin built and run as a separate plugin
+# program. The tests skip when no engine is reachable.
+e2e:
+	go test -v -count=1 ./e2e
 
 # Build the release archives into dist/, in the layout the GitHub registry
 # installs: for each platform <PLUGIN>_<version>_<os>_<arch>.tar.gz (.zip on
@@ -74,7 +71,7 @@ dist: check-version
 		ext=""; if [ "$$os" = "windows" ]; then ext=".exe"; fi; \
 		stage="$(DIST_DIR)/stage/$$platform"; \
 		echo "building $$os/$$arch"; \
-		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -o "$$stage/$(PLUGIN)$$ext" ./cmd/notes; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -o "$$stage/$(PLUGIN)$$ext" ./cmd/docker; \
 		cp README.md LICENSE "$$stage/"; \
 		archive="$(PLUGIN)_$(DIST_VERSION)_$$platform"; \
 		if [ "$$os" = "windows" ]; then \

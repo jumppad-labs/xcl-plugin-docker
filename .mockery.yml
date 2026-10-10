@@ -1,10 +1,8 @@
-# Mockery v3 configuration, run with `make generate`. It generates a strict
-# double of each client interface into a mocks package beside it. The provider
-# unit tests use the double of client/files in place of the real disk, so any
-# call the test does not expect fails it.
-#
-# When you add a client package, add its interfaces under packages and run
-# `make generate`.
+# Mockery v3 configuration, run with `make generate`. It generates a mock of
+# each client interface into a mocks package beside it: the Docker SDK
+# interface in client/docker, which the task layer's unit tests use in place
+# of Docker, and the container tasks in client/containers, which the provider
+# unit tests use in place of the task layer.
 dir: '{{.InterfaceDir}}/mocks'
 filename: 'mock_{{ snakecase .InterfaceName }}.go'
 structname: Mock{{.InterfaceName}}
@@ -13,6 +11,9 @@ template: testify
 template-data:
   unroll-variadic: true
 packages:
-  github.com/jumppad-labs/xcl-plugin-template/client/files:
+  github.com/jumppad-labs/xcl-plugin-docker/client/docker:
     interfaces:
-      Files: {}
+      Docker: {}
+  github.com/jumppad-labs/xcl-plugin-docker/client/containers:
+    interfaces:
+      Tasks: {}
