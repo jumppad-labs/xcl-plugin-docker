@@ -898,3 +898,56 @@ func TestContainerUpdateWithNothingToldMakesNoDockerCalls(t *testing.T) {
 	require.Equal(t, "ctr-123", got.DockerID)
 	require.Equal(t, "10.42.0.5", got.IPAddress)
 }
+
+func TestNewContainerProviderReplacesOnReplaceSettings(t *testing.T) {
+	provider, ok := NewContainerProvider(mocks.NewMockTasks(t)).(*containerProvider)
+	require.True(t, ok)
+
+	require.Equal(t, replaceSettings, provider.DefaultChanged.ReplaceOn)
+}
+
+func TestContainerChangedReplacesOnImageChangeBesideANetworkChange(t *testing.T) {
+	p := NewContainerProvider(mocks.NewMockTasks(t))
+
+	old := testContainer()
+	new := testContainer()
+	new.Image = "nginx:1.27"
+	new.Networks = []entities.NetworkAttachment{
+		{Name: "backend", Aliases: []string{"web.local"}},
+	}
+	changes := []entity.PropertyChange{
+		{Path: networkPath(0).Attribute("name"), Before: "app", After: "backend"},
+		{Path: entity.Path{}.Attribute("image"), Before: old.Image, After: "nginx:1.27"},
+	}
+
+	change, err := p.Changed(context.Background(), old, new, changes, nil)
+	require.NoError(t, err)
+	require.Equal(t, entity.Replace, change)
+}
+
+func TestContainerChangedUpdatesWhenOnlyItsMetadataChanges(t *testing.T) {
+	p := NewContainerProvider(mocks.NewMockTasks(t))
+
+	old := testContainer()
+	new := testContainer()
+	new.Meta.DependsOn = []string{"docker.network.other"}
+	changes := []entity.PropertyChange{
+		{Path: entity.Path{}.Attribute("depends_on"), Before: nil, After: []any{"docker.network.other"}},
+	}
+
+	change, err := p.Changed(context.Background(), old, new, changes, nil)
+	require.NoError(t, err)
+	require.Equal(t, entity.Update, change)
+}
+
+func TestContainerChangedUpdatesWhenANetworkDependencyIsUpdatedAndNothingElseChanged(t *testing.T) {
+	p := NewContainerProvider(mocks.NewMockTasks(t))
+
+	dependencies := []entity.DependencyChange{
+		{Address: "docker.network.app", Change: entity.Update},
+	}
+
+	change, err := p.Changed(context.Background(), testContainer(), testContainer(), nil, dependencies)
+	require.NoError(t, err)
+	require.Equal(t, entity.Update, change)
+}

@@ -58,30 +58,38 @@ generate:
 e2e:
 	go test -v -count=1 ./e2e
 
-# Build the release archives into dist/, in the layout the GitHub registry
-# installs: for each platform <PLUGIN>_<version>_<os>_<arch>.tar.gz (.zip on
-# windows) with the binary at its root, and <PLUGIN>_<version>_checksums.txt
-# in sha256sum format. It uses only go, tar, zip and sha256sum, and signs
-# nothing: the release workflow signs the checksums file.
+# Build the release into dist/, in the layout the GitHub registry installs:
+# for each platform <PLUGIN>-<version>-<os>-<arch>.zip holding the binary,
+# README, LICENSE and the build's xcl-plugin.xcl manifest at its root, and
+# <PLUGIN>-<version>-index.xcl listing every zip with its sha256 checksum.
+# The names are separated with -, like the repository's name; the registry
+# also accepts _ used throughout.
+# It uses only go, zip and sha256sum, and signs nothing: the release workflow
+# signs the index.
 dist: check-version
 	rm -rf $(DIST_DIR)
 	mkdir -p $(DIST_DIR)
-	@set -e; for platform in $(PLATFORMS); do \
+	@set -e; \
+	index="$(DIST_DIR)/$(PLUGIN)-$(DIST_VERSION)-index.xcl"; \
+	platforms=""; \
+	for platform in $(PLATFORMS); do \
 		os=$${platform%_*}; arch=$${platform#*_}; \
 		ext=""; if [ "$$os" = "windows" ]; then ext=".exe"; fi; \
 		stage="$(DIST_DIR)/stage/$$platform"; \
 		echo "building $$os/$$arch"; \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -o "$$stage/$(PLUGIN)$$ext" ./cmd/docker; \
 		cp README.md LICENSE "$$stage/"; \
-		archive="$(PLUGIN)_$(DIST_VERSION)_$$platform"; \
-		if [ "$$os" = "windows" ]; then \
-			(cd "$$stage" && zip -q "../../$$archive.zip" *); \
-		else \
-			tar -czf "$(DIST_DIR)/$$archive.tar.gz" -C "$$stage" .; \
-		fi; \
-	done
+		printf 'plugin {\n  name    = "%s"\n  version = "%s"\n}\n\nexecutable {\n  protocol = [1]\n  command  = ["%s"]\n\n  platform "%s" "%s" {}\n}\n' \
+			"$(PLUGIN)" "$(DIST_VERSION)" "$(PLUGIN)$$ext" "$$os" "$$arch" > "$$stage/xcl-plugin.xcl"; \
+		archive="$(PLUGIN)-$(DIST_VERSION)-$$os-$$arch.zip"; \
+		(cd "$$stage" && zip -q -X "../../$$archive" *); \
+		checksum=$$(sha256sum "$(DIST_DIR)/$$archive" | cut -d' ' -f1); \
+		platforms="$$platforms$$(printf '\n  platform "%s" "%s" {\n    asset    = "%s"\n    checksum = "sha256:%s"\n  }\n' "$$os" "$$arch" "$$archive" "$$checksum")\n"; \
+	done; \
+	printf 'plugin {\n  name    = "%s"\n  version = "%s"\n}\n\nexecutable {\n  protocol = [1]\n' "$(PLUGIN)" "$(DIST_VERSION)" > "$$index"; \
+	printf "$$platforms" >> "$$index"; \
+	printf '}\n' >> "$$index"
 	rm -rf $(DIST_DIR)/stage
-	cd $(DIST_DIR) && sha256sum *.tar.gz *.zip > $(PLUGIN)_$(DIST_VERSION)_checksums.txt
 	@ls -1 $(DIST_DIR)
 
 # Release VERSION: tag the current commit and push the tag. The release

@@ -398,3 +398,29 @@ func TestNetworkChangedReportsNoChangeForIdenticalNetwork(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, entity.NoChange, change)
 }
+
+func TestNewNetworkProviderReplacesOnNetworkReplaceSettings(t *testing.T) {
+	provider, ok := NewNetworkProvider(mocks.NewMockTasks(t)).(*networkProvider)
+	require.True(t, ok)
+
+	require.Equal(t, networkReplaceSettings, provider.DefaultChanged.ReplaceOn)
+}
+
+func TestNetworkChangedReplacesOnSubnetChangeBesideAMetadataChange(t *testing.T) {
+	p := NewNetworkProvider(mocks.NewMockTasks(t))
+
+	old := networkTestNetwork()
+	old.Subnet = "10.42.0.0/24"
+	new := networkTestNetwork()
+	new.Subnet = "10.43.0.0/24"
+	new.Meta.DependsOn = []string{"docker.network.other"}
+
+	changes := []entity.PropertyChange{
+		{Path: entity.Path{}.Attribute("depends_on"), Before: nil, After: []any{"docker.network.other"}},
+		{Path: entity.Path{}.Attribute("subnet"), Before: "10.42.0.0/24", After: "10.43.0.0/24"},
+	}
+
+	change, err := p.Changed(context.Background(), old, new, changes, nil)
+	require.NoError(t, err)
+	require.Equal(t, entity.Replace, change)
+}
