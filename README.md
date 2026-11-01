@@ -2,7 +2,7 @@
 
 An [xcl](https://github.com/jumppad-labs/xcl) plugin that creates real Docker
 networks and containers. It is the example remote plugin: it is built from the
-[xcl plugin template](https://github.com/jumppad-labs/xcl-plugin-template),
+[xcl plugin template](https://github.com/jumppad-labs/xcl-plugin-template-go),
 laid out in the standard xcl plugin layout, and published as signed GitHub
 releases that xcl's GitHub registry installs.
 
@@ -35,8 +35,10 @@ docker "container" "web" {
 ## Install
 
 An application installs the plugin from this repository's releases with xcl's
-GitHub registry, which downloads the build for the current platform, checks
-its checksum and signature, caches it and runs it as a separate program:
+GitHub registry. It downloads the release's index and, with a trusted key,
+checks its signature, then downloads only the zip for the current platform,
+checks it against its checksum in the index and its manifest against the
+index, caches it and runs it as a separate program:
 
 ```go
 import (
@@ -45,7 +47,7 @@ import (
 )
 
 gh := registry.NewGitHub(registry.GitHubTrustedKeys(publicKey))
-gh.RegisterPlugin("jumppad-labs/xcl-plugin-docker", "v0.1.1")
+gh.RegisterPlugin("jumppad-labs/xcl-plugin-docker", "v0.4.0")
 
 c, err := xcl.NewConfig(xcl.WithRegistry(gh))
 ```
@@ -83,7 +85,7 @@ if err != nil {
 }
 
 gh := registry.NewGitHub(registry.GitHubTrustedKeys(string(publicKey)))
-gh.RegisterPlugin("jumppad-labs/xcl-plugin-docker", "v0.1.1")
+gh.RegisterPlugin("jumppad-labs/xcl-plugin-docker", "v0.4.0")
 ```
 
 ## Layout
@@ -134,8 +136,8 @@ Run each from the repository root:
 | `make e2e` | runs only the end-to-end tests |
 | `make lint` | runs `go vet`, a gofmt check and staticcheck, as CI does |
 | `make generate` | regenerates the Mockery doubles in `client/*/mocks` |
-| `make dist VERSION=v0.0.0-snapshot` | builds the release archives into `dist/`, unsigned |
-| `make release VERSION=v0.1.1` | tags the current commit and pushes the tag |
+| `make dist VERSION=v0.0.0-snapshot` | builds the release zips and index into `dist/`, unsigned |
+| `make release VERSION=v0.4.0` | tags the current commit and pushes the tag |
 | `make clean` | removes `build/` and `dist/` |
 
 The real-engine tests in `providers/docker_test.go` and the end-to-end tests
@@ -181,17 +183,25 @@ containers, err := xcl.FindByType[entities.Container](c, "docker", "container")
 ## Release
 
 ```shell
-make release VERSION=v0.1.1
+make release VERSION=v0.4.0
 ```
 
 Tags the current commit and pushes the tag. The release workflow
-(`.github/workflows/release.yml`) runs the tests, builds the archives with
-`make dist`, signs the checksums file with the key in the `GPG_PRIVATE_KEY`
-and `GPG_PASSPHRASE` secrets and publishes the release with `gh`. The release
+(`.github/workflows/release.yml`) runs the tests, builds the release with
+`make dist`, signs the index with the key in the `GPG_PRIVATE_KEY` and
+`GPG_PASSPHRASE` secrets and publishes the release with `gh`. The release
 holds:
 
-- `xcl-plugin-docker_<version>_<os>_<arch>.tar.gz` for linux and darwin, and
-  `xcl-plugin-docker_<version>_windows_<arch>.zip`, on amd64 and arm64;
-- `xcl-plugin-docker_<version>_checksums.txt`, the SHA-256 of every archive;
-- `xcl-plugin-docker_<version>_checksums.txt.sig`, an armoured detached
-  signature over the checksums file.
+- `xcl-plugin-docker-<version>-<os>-<arch>.zip` for linux, darwin and windows
+  on amd64 and arm64, each with the binary at its root (`.exe` on windows),
+  beside `README.md`, `LICENSE` and `xcl-plugin.xcl`, the build's manifest
+  naming the plugin, its version, the protocol it speaks, the command to run
+  and its platform;
+- `xcl-plugin-docker-<version>-index.xcl`, the index listing every zip with
+  its platform and its `sha256:` checksum;
+- `xcl-plugin-docker-<version>-index.xcl.sig`, an armoured detached signature
+  over the index.
+
+Installing it needs xcl v0.13.1 or later, the first release whose GitHub
+registry finds a `-`-separated index. Releases up to v0.3.0 use the old
+layout, which xcl v0.13.0 and later no longer install.

@@ -1,7 +1,7 @@
 # Publishes a signed release when a version tag is pushed, for example by
-# `make release VERSION=v0.1.0`. The release holds an archive per platform,
-# the checksums file and an armoured detached signature over it, named as the
-# GitHub registry installs them.
+# `make release VERSION=v0.1.0`. The release holds a zip per platform, the
+# index listing each zip with its checksum, and an armoured detached
+# signature over the index, named as the GitHub registry installs them.
 #
 # It needs two repository secrets: GPG_PRIVATE_KEY, the armoured private
 # signing key, and GPG_PASSPHRASE, its passphrase. Without the key it fails
@@ -38,7 +38,7 @@ jobs:
       - name: Test
         run: make test
 
-      - name: Build the release archives
+      - name: Build the release
         run: make dist VERSION="$GITHUB_REF_NAME"
 
       - name: Import the signing key
@@ -46,13 +46,13 @@ jobs:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
         run: echo "$GPG_PRIVATE_KEY" | gpg --batch --import
 
-      - name: Sign the checksums
+      - name: Sign the index
         env:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          checksums="$(ls dist/*_checksums.txt)"
+          index="$(ls dist/*-index.xcl)"
           gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
-            --armor --detach-sign --output "$checksums.sig" "$checksums"
+            --armor --detach-sign --output "$index.sig" "$index"
 
       - name: Publish the release
         env:

@@ -26,7 +26,10 @@ var _ plugins.ResourceProvider[*entities.Network] = (*networkProvider)(nil)
 // NewNetworkProvider returns the provider for docker "network" blocks, which
 // creates and removes networks through tasks
 func NewNetworkProvider(tasks containers.Tasks) plugins.ResourceProvider[*entities.Network] {
-	return &networkProvider{tasks: tasks}
+	return &networkProvider{
+		DefaultChanged: plugins.DefaultChanged[*entities.Network]{ReplaceOn: networkReplaceSettings},
+		tasks:          tasks,
+	}
 }
 
 // Init logs that the provider is ready, it needs nothing else
@@ -59,25 +62,23 @@ func (p *networkProvider) Read(ctx context.Context, old *entities.Network, new *
 	return new, nil
 }
 
-// Changed decides from what it is told. It answers replace when the subnet
-// changed: Docker can not move a network to a new address range, the network
-// has to be removed and created again. Any other change to its settings
-// answers update, which needs no Docker call. When nothing changed the
-// decision is left to DefaultChanged.
+// Changed decides from what it is told. DefaultChanged answers replace when
+// the subnet changed, one of the ReplaceOn settings the constructor gives it:
+// Docker can not move a network to a new address range, the network has to be
+// removed and created again. Any other change to its settings answers update,
+// which needs no Docker call, even one DefaultChanged's comparison doesn't
+// see, such as xcl's own metadata.
 func (p *networkProvider) Changed(ctx context.Context, old *entities.Network, new *entities.Network, changes []entity.PropertyChange, dependencies []entity.DependencyChange) (entity.Change, error) {
-	for _, change := range changes {
-		for _, setting := range networkReplaceSettings {
-			if change.Within(setting) {
-				return entity.Replace, nil
-			}
-		}
+	change, err := p.DefaultChanged.Changed(ctx, old, new, changes, dependencies)
+	if err != nil {
+		return entity.NoChange, err
 	}
 
-	if len(changes) > 0 {
+	if change == entity.NoChange && len(changes) > 0 {
 		return entity.Update, nil
 	}
 
-	return p.DefaultChanged.Changed(ctx, old, new, changes, dependencies)
+	return change, nil
 }
 
 // Update returns the network unchanged. Every setting Docker can not change in

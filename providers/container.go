@@ -27,7 +27,10 @@ var _ plugins.ResourceProvider[*entities.Container] = (*containerProvider)(nil)
 // NewContainerProvider returns the provider for docker "container" blocks,
 // which creates and removes containers through tasks
 func NewContainerProvider(tasks containers.Tasks) plugins.ResourceProvider[*entities.Container] {
-	return &containerProvider{tasks: tasks}
+	return &containerProvider{
+		DefaultChanged: plugins.DefaultChanged[*entities.Container]{ReplaceOn: replaceSettings},
+		tasks:          tasks,
+	}
 }
 
 // Init logs that the provider is ready, it needs nothing else
@@ -94,29 +97,31 @@ func (p *containerProvider) Read(ctx context.Context, old *entities.Container, n
 	return new, nil
 }
 
-// Changed decides from what it is told. It answers replace when the image,
-// command, environment or init script changed, since Docker fixes them when
-// it creates a container, or when a dependency other than a Docker network is
-// replaced, such as the template that renders the init script. A change to
+// Changed decides from what it is told. It answers replace when a dependency
+// other than a Docker network is replaced, such as the template that renders
+// the init script. DefaultChanged answers replace when the image, command,
+// environment or init script changed, the ReplaceOn settings the constructor
+// gives it, since Docker fixes them when it creates a container. A change to
 // the container's networks, or a network that is updated or replaced, is
 // handled in place by Update, which moves the running container between
-// networks. Any other change to its settings answers update. A dependency
-// that is only updated, such as the init script's template rendering new
-// content, leaves the container alone: the decision is left to
-// DefaultChanged.
+// networks. Any other change to its settings answers update, even one
+// DefaultChanged's comparison doesn't see, such as xcl's own metadata. A
+// dependency that is only updated, such as the init script's template
+// rendering new content, leaves the container alone.
 func (p *containerProvider) Changed(ctx context.Context, old *entities.Container, new *entities.Container, changes []entity.PropertyChange, dependencies []entity.DependencyChange) (entity.Change, error) {
-	for _, change := range changes {
-		for _, setting := range replaceSettings {
-			if change.Within(setting) {
-				return entity.Replace, nil
-			}
-		}
-	}
-
 	for _, dependency := range dependencies {
 		if dependency.Change == entity.Replace && !isNetworkAddress(dependency.Address) {
 			return entity.Replace, nil
 		}
+	}
+
+	change, err := p.DefaultChanged.Changed(ctx, old, new, changes, dependencies)
+	if err != nil {
+		return entity.NoChange, err
+	}
+
+	if change != entity.NoChange {
+		return change, nil
 	}
 
 	if len(changes) > 0 {
@@ -129,7 +134,7 @@ func (p *containerProvider) Changed(ctx context.Context, old *entities.Container
 		}
 	}
 
-	return p.DefaultChanged.Changed(ctx, old, new, changes, dependencies)
+	return entity.NoChange, nil
 }
 
 // Update moves the running container between networks, working only from what
